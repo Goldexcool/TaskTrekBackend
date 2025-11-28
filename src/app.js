@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsdoc = require('swagger-jsdoc');
 
 dotenv.config();
 
@@ -51,11 +53,55 @@ const { errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
 
+// Swagger/OpenAPI setup
+const swaggerDefinition = {
+  openapi: '3.0.0',
+  info: {
+    title: 'TaskTrek API',
+    version: '1.0.0',
+    description: 'TaskTrek Backend API documentation (Kanban-style task and team management)',
+  },
+  servers: [
+    {
+      url: process.env.API_BASE_URL || 'http://localhost:3000',
+      description: 'Local server',
+    },
+  ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+    },
+  },
+  security: [
+    {
+      bearerAuth: [],
+    },
+  ],
+};
+
+const swaggerOptions = {
+  definition: swaggerDefinition,
+  apis: [
+    './src/routes/*.js',
+    './src/controllers/*.js',
+    './src/models/*.js',
+  ],
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(cors(corsOptions));
 app.use(cookieParser());
+
+// Swagger UI route
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use('/api/auth', authRoutes);  
 app.use('/api/users', userRoutes); 
