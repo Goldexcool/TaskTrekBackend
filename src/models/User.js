@@ -61,6 +61,11 @@ const UserSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Team'
     }],
+    currentTenant: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      default: null
+    },
     userData: {
       type: mongoose.Schema.Types.Mixed,
       default: {

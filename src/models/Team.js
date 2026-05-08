@@ -59,6 +59,11 @@ const TeamSchema = new mongoose.Schema({
   isArchived: {
     type: Boolean,
     default: false
+  },
+  tenant: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenant',
+    index: true
   }
 });
 

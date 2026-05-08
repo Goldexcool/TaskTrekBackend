@@ -12,8 +12,11 @@ const getNotifications = async (req, res) => {
     const skip = (page - 1) * limit;
     const unreadOnly = req.query.unreadOnly === 'true';
     
-    // Build query
-    const query = { recipient: userId };
+    // Build query — scope to tenant if present
+    const query = {
+      recipient: userId,
+      ...(req.tenantId && { tenant: req.tenantId })
+    };
     if (unreadOnly) {
       query.read = false;
     }

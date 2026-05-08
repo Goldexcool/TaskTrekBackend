@@ -30,7 +30,8 @@ const createBoard = async (req, res) => {
       description: description || '',
       team: teamId || null,
       createdBy: req.user.id,
-      members: [{ user: req.user.id, role: 'admin' }]
+      members: [{ user: req.user.id, role: 'admin' }],
+      ...(req.tenantId && { tenant: req.tenantId })
     });
 
     // Create default columns with proper validation
@@ -89,12 +90,14 @@ const createBoard = async (req, res) => {
 // Get all boards
 const getBoards = async (req, res) => {
   try {
-    const boards = await Board.find({
+    const boardFilter = {
       $or: [
         { createdBy: req.user.id },
         { 'members.user': req.user.id }
-      ]
-    })
+      ],
+      ...(req.tenantId && { tenant: req.tenantId })
+    };
+    const boards = await Board.find(boardFilter)
       .populate('team', 'name')
       .populate('createdBy', 'username email')
       .sort({ updatedAt: -1 });

@@ -33,26 +33,22 @@ const getUserActivityFeed = async (req, res) => {
     
     const teamIds = teams.map(team => team._id);
     
-    const activities = await Activity.find({
+    const activityQuery = {
       $or: [
         { user: userId },
         { boardId: { $in: boardIds } },
         { teamId: { $in: teamIds } }
-      ]
-    })
+      ],
+      ...(req.tenantId && { tenant: req.tenantId })
+    };
+
+    const activities = await Activity.find(activityQuery)
     .sort({ timestamp: -1 })
     .skip(skip)
     .limit(limit)
     .populate('user', 'name username avatar');
-    
-    // Count total for pagination
-    const total = await Activity.countDocuments({
-      $or: [
-        { user: userId },
-        { boardId: { $in: boardIds } },
-        { teamId: { $in: teamIds } }
-      ]
-    });
+
+    const total = await Activity.countDocuments(activityQuery);
     
     return res.status(200).json({
       success: true,

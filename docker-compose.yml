@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    container_name: tasktrek-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/tasktrek
+      - NODE_ENV=${NODE_ENV:-development}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - tasktrek
+
+  mongo:
+    image: mongo:7
+    container_name: tasktrek-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tasktrek
+
+volumes:
+  mongo_data:
+
+networks:
+  tasktrek:
+    driver: bridge

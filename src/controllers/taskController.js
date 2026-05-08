@@ -101,7 +101,8 @@ const createTask = async (req, res) => {
       board: boardId,
       column: columnId,
       order,
-      team: board.team
+      team: board.team,
+      ...(req.tenantId && { tenant: req.tenantId })
     });
 
     const populatedTask = await Task.findById(task._id)
@@ -237,7 +238,8 @@ const createTaskFromBody = async (req, res) => {
       board: boardId,
       column: columnId,
       order,
-      team: board.team
+      team: board.team,
+      ...(req.tenantId && { tenant: req.tenantId })
     });
 
     const populatedTask = await Task.findById(task._id)
@@ -297,7 +299,8 @@ const createTaskFromBody = async (req, res) => {
 const getAllTasks = async (req, res) => {
   try {
     // Get all tasks without filtering by user
-    const tasks = await Task.find({})
+    const allTasksFilter = req.tenantId ? { tenant: req.tenantId } : {};
+    const tasks = await Task.find(allTasksFilter)
       .populate('createdBy', 'name username avatar')
       .populate('assignedTo', 'name username avatar email')
       .populate('completedBy', 'name username avatar')
@@ -1252,7 +1255,11 @@ const getTasksByUser = async (req, res) => {
       });
     }
     
-    const tasks = await Task.find({ assignedTo: userId })
+    const userTasksFilter = {
+      assignedTo: userId,
+      ...(req.tenantId && { tenant: req.tenantId })
+    };
+    const tasks = await Task.find(userTasksFilter)
       .populate('createdBy', 'name username avatar')
       .populate('assignedTo', 'name username avatar email')
       .populate('completedBy', 'name username avatar')
@@ -1303,7 +1310,11 @@ const getTasksByColumn = async (req, res) => {
       });
     }
     
-    const tasks = await Task.find({ column: columnId })
+    const columnTasksFilter = {
+      column: columnId,
+      ...(req.tenantId && { tenant: req.tenantId })
+    };
+    const tasks = await Task.find(columnTasksFilter)
       .populate('createdBy', 'name username avatar')
       .populate('assignedTo', 'name username avatar email')
       .populate('completedBy', 'name username avatar')

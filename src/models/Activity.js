@@ -66,6 +66,11 @@ const ActivitySchema = new mongoose.Schema({
     type: Object,
     default: {}
   },
+  tenant: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenant',
+    index: true
+  },
   timestamp: {
     type: Date,
     default: Date.now

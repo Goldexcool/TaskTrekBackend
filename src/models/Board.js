@@ -31,6 +31,11 @@ const BoardSchema = new mongoose.Schema({
     },
     image: {
         type: String
+    },
+    tenant: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Tenant',
+        index: true
     }
 }, {
     timestamps: true

@@ -62,7 +62,8 @@ const createTeam = async (req, res) => {
       name,
       description: description || '',
       owner: req.user.id,
-      members: formattedMembers
+      members: formattedMembers,
+      ...(req.tenantId && { tenant: req.tenantId })
     });
     
     // Populate team data
@@ -96,10 +97,12 @@ const createTeam = async (req, res) => {
 
 const getTeams = async (req, res) => {
   try {
-    // Find teams where the user is a member
-    const teams = await Team.find({
-      members: { $elemMatch: { user: req.user.id } }
-    }).populate('owner', 'username email');
+    // Find teams where the user is a member, optionally scoped to tenant
+    const teamQuery = {
+      members: { $elemMatch: { user: req.user.id } },
+      ...(req.tenantId && { tenant: req.tenantId })
+    };
+    const teams = await Team.find(teamQuery).populate('owner', 'username email');
     
     res.status(200).json({
       success: true,

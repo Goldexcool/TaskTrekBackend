@@ -94,7 +94,10 @@ const signup = async (req, res) => {
     // Generate tokens
     const accessToken = generateAccessToken(user._id, user.email);
     const refreshToken = generateRefreshToken(user._id);
-    
+
+    // Persist refresh token so it can be validated on /refresh-token
+    await User.findByIdAndUpdate(user._id, { refreshToken });
+
     // Send welcome email (non-blocking)
     try {
       console.log('Attempting to send welcome email to new user');
@@ -292,11 +295,11 @@ const refreshTokenHandler = async (req, res) => {
     // Verify refresh token
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
     
-    // Find user with this refresh token
-    const user = await User.findOne({ 
+    // Find user with this refresh token (refreshToken field has select:false)
+    const user = await User.findOne({
       _id: decoded.id,
-      refreshToken 
-    });
+      refreshToken
+    }).select('+refreshToken');
 
     if (!user) {
       return res.status(403).json({

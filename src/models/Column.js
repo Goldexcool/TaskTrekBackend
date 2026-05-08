@@ -14,6 +14,11 @@ const ColumnSchema = new mongoose.Schema({
   position: {
     type: Number,
     default: 0
+  },
+  tenant: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenant',
+    index: true
   }
 }, {
   timestamps: true

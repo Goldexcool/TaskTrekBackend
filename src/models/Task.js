@@ -59,6 +59,11 @@ const TaskSchema = new mongoose.Schema({
   completedAt: {
     type: Date
   },
+  tenant: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tenant',
+    index: true
+  },
   createdAt: {
     type: Date,
     default: Date.now
