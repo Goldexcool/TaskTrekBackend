@@ -21,6 +21,7 @@ export interface IUser {
   username: string;
   email: string;
   password: string;
+  role: 'user' | 'admin';
   isVerified: boolean;
   verificationCode?: string;
   verificationExpires?: Date;
@@ -28,6 +29,12 @@ export interface IUser {
   resetPasswordExpire?: Date;
   refreshToken?: string | null;
   teams: mongoose.Types.ObjectId[];
+  tenants: Array<{
+    tenant: mongoose.Types.ObjectId;
+    role: 'owner' | 'admin' | 'member' | 'viewer';
+    status: 'active' | 'invited' | 'removed' | 'suspended';
+    joinedAt?: Date;
+  }>;
   currentTenant?: mongoose.Types.ObjectId | null;
   userData?: IUserData;
 }
@@ -76,6 +83,11 @@ const UserSchema = new Schema<IUserDocument>(
         return password;
       }
     },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user'
+    },
     isVerified: {
       type: Boolean,
       default: false
@@ -97,6 +109,14 @@ const UserSchema = new Schema<IUserDocument>(
       {
         type: Schema.Types.ObjectId,
         ref: 'Team'
+      }
+    ],
+    tenants: [
+      {
+        tenant: { type: Schema.Types.ObjectId, ref: 'Tenant' },
+        role: { type: String, enum: ['owner', 'admin', 'member', 'viewer'], default: 'member' },
+        status: { type: String, enum: ['active', 'invited', 'removed', 'suspended'], default: 'active' },
+        joinedAt: { type: Date, default: Date.now }
       }
     ],
     currentTenant: {

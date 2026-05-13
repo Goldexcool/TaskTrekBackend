@@ -1,154 +1,10 @@
-import nodemailer from 'nodemailer';
-import { Transporter } from 'nodemailer';
+import https from 'https';
 
-console.log('Setting up email transporter with:', {
-  user: process.env.EMAIL_USER
-    ? process.env.EMAIL_USER.substring(0, 5) + '...'
-    : 'undefined',
-  pass: process.env.EMAIL_PASS ? '[REDACTED]' : 'undefined'
-});
-
-let transporter: Transporter | null = null;
-
-const getTransporter = (): Transporter | null => {
-  if (transporter) return transporter;
-
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.error('Email configuration missing! Check your .env file');
-    return null;
-  }
-
-  transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    },
-    logger: true
-  });
-
-  return transporter;
-};
-
-const sendPasswordResetEmail = async (email: string, resetToken: string): Promise<boolean> => {
-  try {
-    console.log(`Attempting to send password reset email to: ${email}`);
-
-    const transport = getTransporter();
-    if (!transport) {
-      throw new Error('Email transporter not configured');
-    }
-
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
-
-    const mailOptions = {
-      from: `"TaskTrek Security" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Password Reset Request',
-      html: `
-        <div style="background: #f9fafc; margin: 0; padding: 20px 0; font-family: 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif; color: #1c2540;">
-          <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.08);">
-            <!-- Header -->
-            <div style="background: linear-gradient(to right, #2e5bff, #4466f2); padding: 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">
-                <span style="font-weight: 800;">Task</span>Trek
-              </h1>
-              <p style="color: rgba(255, 255, 255, 0.85); margin: 5px 0 0 0; font-size: 15px;">Enterprise Task Management</p>
-            </div>
-
-            <!-- Content -->
-            <div style="padding: 40px 30px;">
-              <h2 style="color: #1c2540; font-size: 22px; font-weight: 600; margin-top: 0; margin-bottom: 15px;">Reset Your Password</h2>
-              <p style="font-size: 16px; line-height: 1.6; color: #4e5d78; margin-bottom: 25px;">A request has been received to change the password for your TaskTrek account. This link will be valid for the next 15 minutes.</p>
-
-              <div style="margin: 30px 0; text-align: center;">
-                <a href="${resetUrl}" style="display: inline-block; padding: 14px 36px; background: #2e5bff; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 500;">Reset Password</a>
-              </div>
-
-              <div style="background-color: #f7faff; border-left: 4px solid #2e5bff; padding: 18px; margin-top: 30px; border-radius: 4px;">
-                <p style="font-size: 15px; color: #4e5d78; margin: 0;">If you did not request a password change, please ignore this email or contact support if you have questions.</p>
-              </div>
-
-              <div style="margin-top: 30px; color: #8492a6; font-size: 14px;">
-                <p>If the button doesn't work, copy and paste this URL into your browser:</p>
-                <p style="background-color: #f5f7fa; padding: 12px; border-radius: 6px; font-family: monospace; word-break: break-all; margin: 10px 0 0 0; font-size: 13px;">${resetUrl}</p>
-              </div>
-            </div>
-
-            <!-- Footer -->
-            <div style="background-color: #f5f7fa; padding: 25px 30px; text-align: center;">
-              <p style="color: #8492a6; font-size: 14px; margin: 0 0 10px 0;">© ${new Date().getFullYear()} TaskTrek. All rights reserved.</p>
-            </div>
-          </div>
-        </div>
-      `
-    };
-
-    const info = await transport.sendMail(mailOptions);
-    console.log(`Password reset email sent: ${(info as { messageId: string }).messageId}`);
-    return true;
-  } catch (error) {
-    console.error('Error sending password reset email:', error);
-    throw new Error('Failed to send password reset email');
-  }
-};
-
-const sendPasswordResetConfirmationEmail = async (email: string): Promise<boolean> => {
-  try {
-    console.log(`Sending password reset confirmation to: ${email}`);
-
-    const transport = getTransporter();
-    if (!transport) {
-      throw new Error('Email transporter not configured');
-    }
-
-    const mailOptions = {
-      from: `"TaskTrek Security" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Password Reset Successful',
-      html: `
-        <div style="background: #f9fafc; margin: 0; padding: 20px 0; font-family: 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif; color: #1c2540;">
-          <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.08);">
-            <!-- Header -->
-            <div style="background: linear-gradient(to right, #2e5bff, #4466f2); padding: 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-weight: 600; font-size: 24px;">
-                <span style="font-weight: 800;">Task</span>Trek
-              </h1>
-              <p style="color: rgba(255, 255, 255, 0.85); margin: 5px 0 0 0; font-size: 15px;">Enterprise Task Management</p>
-            </div>
-
-            <!-- Content -->
-            <div style="padding: 40px 30px; text-align: center;">
-              <h2 style="color: #1c2540; font-size: 24px; font-weight: 600; margin-top: 0; margin-bottom: 15px;">Password Updated Successfully</h2>
-              <p style="font-size: 16px; line-height: 1.6; color: #4e5d78; margin-bottom: 25px;">Your TaskTrek account password has been changed successfully. You can now log in with your new credentials.</p>
-
-              <div style="margin: 30px 0;">
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" style="display: inline-block; padding: 14px 36px; background: #2e5bff; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 500;">Log In</a>
-              </div>
-
-              <div style="background-color: #fff7ed; border-left: 4px solid #ff7849; padding: 18px; margin-top: 30px; border-radius: 4px; text-align: left;">
-                <h4 style="color: #ff7849; font-size: 15px; margin-top: 0; margin-bottom: 10px; font-weight: 600;">Security Notice</h4>
-                <p style="font-size: 14px; color: #4e5d78; margin: 0;">If you did not initiate this password change, please contact our security team immediately at <a href="mailto:security@tasktrek.com" style="color: #2e5bff; font-weight: 500;">security@tasktrek.com</a></p>
-              </div>
-            </div>
-
-            <!-- Footer -->
-            <div style="background-color: #f5f7fa; padding: 25px 30px; text-align: center;">
-              <p style="color: #8492a6; font-size: 14px; margin: 0 0 10px 0;">© ${new Date().getFullYear()} TaskTrek. All rights reserved.</p>
-            </div>
-          </div>
-        </div>
-      `
-    };
-
-    const info = await transport.sendMail(mailOptions);
-    console.log(`Password reset confirmation email sent: ${(info as { messageId: string }).messageId}`);
-    return true;
-  } catch (error) {
-    console.error('Error sending password reset confirmation email:', error);
-    throw new Error('Failed to send password reset confirmation email');
-  }
-};
+interface BrevoConfig {
+  apiKey: string;
+  senderEmail: string;
+  senderName: string;
+}
 
 interface MailUser {
   email: string;
@@ -156,68 +12,259 @@ interface MailUser {
   username?: string;
 }
 
-const sendWelcomeEmail = async (user: MailUser): Promise<boolean> => {
+interface EmailLayoutOptions {
+  preview: string;
+  eyebrow: string;
+  title: string;
+  intro: string;
+  bodyHtml?: string;
+  ctaText?: string;
+  ctaUrl?: string;
+  closing?: string;
+}
+
+const maskValue = (value?: string): string =>
+  value ? `${value.slice(0, 6)}...` : 'undefined';
+
+const getTransporter = (): BrevoConfig | null => {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderName = process.env.BREVO_SENDER_NAME || 'TaskTrek';
+
+  if (!apiKey || !senderEmail) {
+    console.error('Brevo configuration missing. Check BREVO_API_KEY and BREVO_SENDER_EMAIL.');
+    return null;
+  }
+
+  return { apiKey, senderEmail, senderName };
+};
+
+console.log('Brevo mailer configured with:', {
+  apiKey: maskValue(process.env.BREVO_API_KEY),
+  senderEmail: process.env.BREVO_SENDER_EMAIL || 'undefined',
+  senderName: process.env.BREVO_SENDER_NAME || 'TaskTrek'
+});
+
+const buildEmailLayout = ({
+  preview,
+  eyebrow,
+  title,
+  intro,
+  bodyHtml = '',
+  ctaText,
+  ctaUrl,
+  closing = 'TaskTrek'
+}: EmailLayoutOptions): string => `
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>${title}</title>
+    </head>
+    <body style="margin:0;padding:0;background:#f3f1ec;color:#1f1b16;font-family:Georgia,'Times New Roman',serif;">
+      <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${preview}</div>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f1ec;padding:32px 16px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fbfaf7;border:1px solid #d9d1c6;">
+              <tr>
+                <td style="padding:28px 32px 20px;border-bottom:1px solid #e4ddd2;">
+                  <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#8a7761;font-family:Arial,Helvetica,sans-serif;">${eyebrow}</div>
+                  <div style="margin-top:12px;font-size:30px;line-height:1.2;font-weight:700;color:#1f1b16;">${title}</div>
+                  <div style="margin-top:14px;font-size:17px;line-height:1.7;color:#3c342c;font-family:Arial,Helvetica,sans-serif;">${intro}</div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:28px 32px;">
+                  <div style="font-size:15px;line-height:1.8;color:#4a4036;font-family:Arial,Helvetica,sans-serif;">${bodyHtml}</div>
+                  ${ctaText && ctaUrl ? `
+                    <div style="margin-top:28px;">
+                      <a href="${ctaUrl}" style="display:inline-block;padding:14px 24px;background:#1f1b16;color:#fbfaf7;text-decoration:none;font-size:14px;letter-spacing:0.4px;font-weight:600;font-family:Arial,Helvetica,sans-serif;">
+                        ${ctaText}
+                      </a>
+                    </div>
+                  ` : ''}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:22px 32px;background:#efe8de;border-top:1px solid #e4ddd2;">
+                  <div style="font-size:12px;line-height:1.8;color:#6f6255;font-family:Arial,Helvetica,sans-serif;">
+                    ${closing}<br />
+                    Focused work, organized beautifully.
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+  </html>
+`;
+
+const sendBrevoEmail = async ({
+  toEmail,
+  toName,
+  subject,
+  htmlContent
+}: {
+  toEmail: string;
+  toName?: string;
+  subject: string;
+  htmlContent: string;
+}): Promise<boolean> => {
+  const config = getTransporter();
+  if (!config) {
+    throw new Error('Brevo mailer not configured');
+  }
+
+  const payload = JSON.stringify({
+    sender: {
+      email: config.senderEmail,
+      name: config.senderName
+    },
+    to: [
+      {
+        email: toEmail,
+        ...(toName ? { name: toName } : {})
+      }
+    ],
+    subject,
+    htmlContent
+  });
+
+  return await new Promise<boolean>((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'api.brevo.com',
+        path: '/v3/smtp/email',
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'api-key': config.apiKey,
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload)
+        }
+      },
+      res => {
+        let body = '';
+
+        res.on('data', chunk => {
+          body += chunk.toString();
+        });
+
+        res.on('end', () => {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(true);
+            return;
+          }
+
+          reject(
+            new Error(
+              `Brevo email failed with status ${res.statusCode ?? 'unknown'}: ${body || 'No response body'}`
+            )
+          );
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+};
+
+const sendPasswordResetEmail = async (email: string, resetToken: string): Promise<boolean> => {
+  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
+
+  const html = buildEmailLayout({
+    preview: 'Reset your TaskTrek password.',
+    eyebrow: 'Security',
+    title: 'Reset your password',
+    intro: 'A password reset was requested for your TaskTrek account. If that was you, use the link below to choose a new password.',
+    bodyHtml: `
+      <p style="margin:0 0 16px;">For your security, this link expires in 15 minutes.</p>
+      <p style="margin:0 0 16px;">If you did not request this change, you can safely ignore this email.</p>
+      <p style="margin:20px 0 0;padding:16px;border:1px solid #d9d1c6;background:#f6f2eb;word-break:break-word;">
+        ${resetUrl}
+      </p>
+    `,
+    ctaText: 'Reset Password',
+    ctaUrl: resetUrl,
+    closing: 'TaskTrek Security'
+  });
+
   try {
-    console.log(`Sending welcome email to: ${user.email}`);
+    return await sendBrevoEmail({
+      toEmail: email,
+      subject: 'Reset your TaskTrek password',
+      htmlContent: html
+    });
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+    throw new Error('Failed to send password reset email');
+  }
+};
 
-    const transport = getTransporter();
-    if (!transport) {
-      console.error('Email transporter not configured');
-      return false;
-    }
+const sendPasswordResetConfirmationEmail = async (email: string): Promise<boolean> => {
+  const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
 
-    const mailOptions = {
-      from: `"TaskTrek Team" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: 'Welcome to TaskTrek - Your Productivity Journey Begins',
-      html: `
-        <div style="background: #f9fafc; margin: 0; padding: 20px 0; font-family: 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif; color: #1c2540;">
-          <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.08);">
-            <!-- Header Banner -->
-            <div style="background: linear-gradient(135deg, #2e5bff, #4466f2); height: 160px; position: relative;">
-              <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%;">
-                <h1 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 32px; letter-spacing: -0.5px;">
-                  Welcome to <span style="font-weight: 800;">TaskTrek</span>
-                </h1>
-                <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px; letter-spacing: 0.2px;">Elevate your productivity</p>
-              </div>
-            </div>
+  const html = buildEmailLayout({
+    preview: 'Your TaskTrek password was updated.',
+    eyebrow: 'Confirmation',
+    title: 'Password updated',
+    intro: 'Your TaskTrek password has been changed successfully. You can now sign in with your new credentials.',
+    bodyHtml: `
+      <p style="margin:0 0 16px;">If you did not make this change, contact your administrator or support immediately.</p>
+    `,
+    ctaText: 'Sign In',
+    ctaUrl: loginUrl,
+    closing: 'TaskTrek Security'
+  });
 
-            <!-- Content -->
-            <div style="padding: 40px 30px;">
-              <h2 style="color: #1c2540; font-size: 22px; font-weight: 600; margin-top: 0; margin-bottom: 15px;">Hello ${user.name || user.username},</h2>
-              <p style="font-size: 16px; line-height: 1.6; color: #4e5d78; margin-bottom: 25px;">Thank you for joining TaskTrek! Your account has been successfully created and is ready to use.</p>
+  try {
+    return await sendBrevoEmail({
+      toEmail: email,
+      subject: 'Your TaskTrek password was updated',
+      htmlContent: html
+    });
+  } catch (error) {
+    console.error('Error sending password reset confirmation email:', error);
+    throw new Error('Failed to send password reset confirmation email');
+  }
+};
 
-              <div style="margin: 35px 0; text-align: center;">
-                <a href="${process.env.FRONTEND_URL || ''}/dashboard" style="display: inline-block; padding: 14px 36px; background: #2e5bff; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 500;">Get Started Now</a>
-              </div>
-            </div>
+const sendWelcomeEmail = async (user: MailUser): Promise<boolean> => {
+  const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`;
+  const displayName = user.name || user.username || 'there';
 
-            <!-- Footer -->
-            <div style="background-color: #f5f7fa; padding: 25px 30px; text-align: center;">
-              <p style="color: #8492a6; font-size: 14px; margin: 0 0 10px 0;">© ${new Date().getFullYear()} TaskTrek. All rights reserved.</p>
-            </div>
-          </div>
-        </div>
-      `
-    };
+  const html = buildEmailLayout({
+    preview: 'Welcome to TaskTrek.',
+    eyebrow: 'Welcome',
+    title: 'Your workspace starts here',
+    intro: `Hello ${displayName}, your TaskTrek account is ready. We built it to help your work stay calm, clear, and in motion.`,
+    bodyHtml: `
+      <p style="margin:0 0 16px;">Start by creating a workspace, organizing a board, and inviting the people who matter most to the work.</p>
+      <p style="margin:0;">Everything ahead should feel structured, focused, and easy to follow.</p>
+    `,
+    ctaText: 'Open TaskTrek',
+    ctaUrl: dashboardUrl,
+    closing: 'TaskTrek'
+  });
 
-    const info = await transport.sendMail(mailOptions);
-    console.log(`Welcome email sent: ${(info as { messageId: string }).messageId}`);
-    return true;
+  try {
+    return await sendBrevoEmail({
+      toEmail: user.email,
+      toName: displayName,
+      subject: 'Welcome to TaskTrek',
+      htmlContent: html
+    });
   } catch (error) {
     console.error('Error sending welcome email:', error);
     return false;
   }
 };
-
-const availableMailerFunctions = {
-  sendPasswordResetEmail: typeof sendPasswordResetEmail,
-  sendPasswordResetConfirmationEmail: typeof sendPasswordResetConfirmationEmail,
-  sendWelcomeEmail: typeof sendWelcomeEmail
-};
-
-console.log('Available mailer functions:', availableMailerFunctions);
 
 export {
   sendPasswordResetEmail,

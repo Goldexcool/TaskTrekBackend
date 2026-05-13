@@ -1,32 +1,33 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import testMongoDBDNS from '../utils/dnsTest';
-import { authenticateToken } from '../middleware/authMiddleware';
+import { Router } from 'express';
+import { authenticateToken, isAdmin } from '../middleware/authMiddleware';
+import {
+  getPlatformStats,
+  listUsers,
+  getUserDetail,
+  updateUserRole,
+  deleteUser,
+  listTenants,
+  getTenantDetail,
+  updateTenantStatus
+} from '../controllers/adminController';
 
 const router = Router();
 
-router.use(authenticateToken);
+// All admin routes require a valid JWT AND platform-level admin role
+router.use(authenticateToken, isAdmin);
 
-const checkAdmin = (req: Request, res: Response, next: NextFunction): void => {
-  if (!req.user || req.user.role !== 'admin') {
-    res.status(403).json({
-      success: false,
-      message: 'Access denied: Admin privileges required'
-    });
-    return;
-  }
-  next();
-};
+// Platform stats
+router.get('/stats', getPlatformStats);
 
-router.get('/test-mongodb-dns', checkAdmin, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const results = await testMongoDBDNS();
-    res.json({ success: true, results });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: (error as Error).message || 'Error testing MongoDB DNS'
-    });
-  }
-});
+// User management
+router.get('/users', listUsers);
+router.get('/users/:userId', getUserDetail);
+router.patch('/users/:userId/role', updateUserRole);
+router.delete('/users/:userId', deleteUser);
+
+// Tenant management
+router.get('/tenants', listTenants);
+router.get('/tenants/:tenantId', getTenantDetail);
+router.patch('/tenants/:tenantId/status', updateTenantStatus);
 
 export default router;

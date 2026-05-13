@@ -19,6 +19,7 @@ import teamRoutes from './routes/teamRoutes';
 import tenantRoutes from './routes/tenantRoutes';
 import activityRoutes from './routes/activityRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import adminRoutes from './routes/adminRoutes';
 import { errorHandler } from './middleware/errorMiddleware';
 
 const app = express();
@@ -109,6 +110,7 @@ app.use('/api/columns', generalLimiter, columnRoutes);
 app.use('/api/tasks', generalLimiter, taskRoutes);
 app.use('/api/activities', generalLimiter, activityRoutes);
 app.use('/api/notifications', generalLimiter, notificationRoutes);
+app.use('/api/admin', generalLimiter, adminRoutes);
 
 // ── Global error handler ─────────────────────────────────────────────────────
 app.use(errorHandler);

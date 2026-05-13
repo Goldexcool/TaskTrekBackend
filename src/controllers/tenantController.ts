@@ -11,27 +11,26 @@ const createTenant = async (req: Request, res: Response): Promise<void> => {
       logo?: string;
     };
 
-    if (!name) {
+    if (!name || !name.trim()) {
       res.status(400).json({ success: false, message: 'Organization name is required.' });
       return;
     }
 
     const tenant = await Tenant.create({
-      name,
+      name: name.trim(),
       description,
       logo,
       owner: req.user!.id,
-      members: [
-        {
-          user: req.user!.id,
-          role: 'owner',
-          status: 'active',
-          joinedAt: new Date()
-        }
-      ]
+      members: [{ user: req.user!.id, role: 'owner', status: 'active', joinedAt: new Date() }]
     });
 
-    await User.findByIdAndUpdate(req.user!.id, { currentTenant: tenant._id });
+    // Sync User.tenants and set currentTenant
+    await User.findByIdAndUpdate(req.user!.id, {
+      currentTenant: tenant._id,
+      $push: {
+        tenants: { tenant: tenant._id, role: 'owner', status: 'active', joinedAt: new Date() }
+      }
+    });
 
     res.status(201).json({ success: true, message: 'Organization created.', data: tenant });
   } catch (error) {
@@ -61,12 +60,18 @@ const getCurrentTenant = (req: Request, res: Response): void => {
 
 const getTenantById = async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!mongoose.isValidObjectId(req.params.tenantId)) {
+      res.status(400).json({ success: false, message: 'Invalid tenant ID.' });
+      return;
+    }
+
     const tenant = await Tenant.findOne({
       _id: req.params.tenantId,
-      status: 'active'
+      status: { $ne: 'deleted' }
     }).lean() as (Record<string, unknown> & {
       owner: { toString(): string };
       members: Array<{ user: { toString(): string }; status: string }>;
+      status: string;
     }) | null;
 
     if (!tenant) {
@@ -74,13 +79,16 @@ const getTenantById = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const userId = req.user!.id;
-    const isMember = tenant.members.some(
-      m => m.user.toString() === userId && m.status === 'active'
-    );
-    const isOwner = tenant.owner.toString() === userId;
+    if (tenant.status === 'suspended') {
+      res.status(403).json({ success: false, message: 'This organization has been suspended.' });
+      return;
+    }
 
-    if (!isMember && !isOwner) {
+    const userId = req.user!.id;
+    const isOwner = tenant.owner.toString() === userId;
+    const isActiveMember = tenant.members.some(m => m.user.toString() === userId && m.status === 'active');
+
+    if (!isOwner && !isActiveMember) {
       res.status(403).json({ success: false, message: 'Access denied.' });
       return;
     }
@@ -108,7 +116,6 @@ const updateTenant = async (req: Request, res: Response): Promise<void> => {
     if (settings !== undefined) updates.settings = settings;
 
     const tenantDoc = req.tenant as Record<string, unknown> & { _id: unknown };
-
     const tenant = await Tenant.findByIdAndUpdate(
       tenantDoc._id,
       { $set: updates },
@@ -133,9 +140,23 @@ const deleteTenant = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-const getMembers = (req: Request, res: Response): void => {
-  const tenantDoc = req.tenant as Record<string, unknown> & { members: unknown };
-  res.status(200).json({ success: true, data: tenantDoc.members });
+const getMembers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tenantDoc = req.tenant as Record<string, unknown> & { _id: unknown };
+    const tenant = await Tenant.findById(tenantDoc._id)
+      .populate('members.user', 'name username email')
+      .lean();
+
+    if (!tenant) {
+      res.status(404).json({ success: false, message: 'Organization not found.' });
+      return;
+    }
+
+    res.status(200).json({ success: true, data: tenant.members });
+  } catch (error) {
+    console.error('getMembers error:', error);
+    res.status(500).json({ success: false, message: (error as Error).message });
+  }
 };
 
 const addMember = async (req: Request, res: Response): Promise<void> => {
@@ -148,48 +169,59 @@ const addMember = async (req: Request, res: Response): Promise<void> => {
 
     const validRoles = ['admin', 'member', 'viewer'];
     if (!validRoles.includes(role)) {
-      res.status(400).json({
-        success: false,
-        message: 'Invalid role. Must be admin, member, or viewer.'
-      });
+      res.status(400).json({ success: false, message: 'Invalid role. Must be admin, member, or viewer.' });
       return;
     }
 
-    let user: (Record<string, unknown> & { _id: unknown }) | null = null;
-    if (userId) {
-      user = await User.findById(userId).lean() as (Record<string, unknown> & { _id: unknown }) | null;
-    } else if (email) {
-      user = await User.findOne({ email: email.toLowerCase() }).lean() as (Record<string, unknown> & { _id: unknown }) | null;
+    if (!userId && !email) {
+      res.status(400).json({ success: false, message: 'Provide either userId or email.' });
+      return;
     }
 
-    if (!user) {
+    const targetUser = userId
+      ? await User.findById(userId)
+      : await User.findOne({ email: email!.toLowerCase() });
+
+    if (!targetUser) {
       res.status(404).json({ success: false, message: 'User not found.' });
       return;
     }
 
-    const tenantDoc = req.tenant as Record<string, unknown> & { _id: unknown };
+    const tenantDoc = req.tenant as Record<string, unknown> & { _id: mongoose.Types.ObjectId };
     const tenant = await Tenant.findById(tenantDoc._id);
     if (!tenant) {
       res.status(404).json({ success: false, message: 'Tenant not found.' });
       return;
     }
 
-    const existing = tenant.members.find(m => m.user.toString() === (user!._id as { toString(): string }).toString());
+    const existing = tenant.members.find(m => m.user.toString() === targetUser._id.toString());
     if (existing) {
-      res.status(400).json({
-        success: false,
-        message: 'User is already a member of this organization.'
+      if (existing.status === 'active') {
+        res.status(400).json({ success: false, message: 'User is already a member of this organization.' });
+        return;
+      }
+      // Reactivate previously removed member
+      existing.status = 'active';
+      existing.role = role as 'admin' | 'member' | 'viewer';
+      existing.joinedAt = new Date();
+    } else {
+      tenant.members.push({
+        user: targetUser._id as mongoose.Types.ObjectId,
+        role: role as 'admin' | 'member' | 'viewer',
+        status: 'active',
+        joinedAt: new Date()
       });
-      return;
     }
 
-    tenant.members.push({
-      user: user._id as import('mongoose').Types.ObjectId,
-      role: role as 'admin' | 'member' | 'viewer',
-      status: 'active',
-      joinedAt: new Date()
-    });
     await tenant.save();
+
+    // Sync User.tenants
+    await User.findByIdAndUpdate(targetUser._id, {
+      $pull: { tenants: { tenant: tenantDoc._id } }
+    });
+    await User.findByIdAndUpdate(targetUser._id, {
+      $push: { tenants: { tenant: tenantDoc._id, role, status: 'active', joinedAt: new Date() } }
+    });
 
     res.status(201).json({ success: true, message: 'Member added.', data: tenant.members });
   } catch (error) {
@@ -205,11 +237,16 @@ const updateMemberRole = async (req: Request, res: Response): Promise<void> => {
 
     const validRoles = ['admin', 'member', 'viewer'];
     if (!role || !validRoles.includes(role)) {
-      res.status(400).json({ success: false, message: 'Invalid role.' });
+      res.status(400).json({ success: false, message: 'Invalid role. Must be admin, member, or viewer.' });
       return;
     }
 
-    const tenantDoc = req.tenant as Record<string, unknown> & { _id: unknown };
+    if (!mongoose.isValidObjectId(userId)) {
+      res.status(400).json({ success: false, message: 'Invalid user ID.' });
+      return;
+    }
+
+    const tenantDoc = req.tenant as Record<string, unknown> & { _id: mongoose.Types.ObjectId };
     const tenant = await Tenant.findById(tenantDoc._id);
     if (!tenant) {
       res.status(404).json({ success: false, message: 'Tenant not found.' });
@@ -217,10 +254,7 @@ const updateMemberRole = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (tenant.owner.toString() === userId) {
-      res.status(400).json({
-        success: false,
-        message: 'Cannot change the role of the tenant owner.'
-      });
+      res.status(400).json({ success: false, message: 'Cannot change the role of the tenant owner.' });
       return;
     }
 
@@ -233,6 +267,12 @@ const updateMemberRole = async (req: Request, res: Response): Promise<void> => {
     member.role = role as 'admin' | 'member' | 'viewer';
     await tenant.save();
 
+    // Sync User.tenants
+    await User.findOneAndUpdate(
+      { _id: userId, 'tenants.tenant': tenantDoc._id },
+      { $set: { 'tenants.$.role': role } }
+    );
+
     res.status(200).json({ success: true, message: 'Member role updated.', data: tenant.members });
   } catch (error) {
     console.error('updateMemberRole error:', error);
@@ -244,7 +284,12 @@ const removeMember = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
 
-    const tenantDoc = req.tenant as Record<string, unknown> & { _id: unknown };
+    if (!mongoose.isValidObjectId(userId)) {
+      res.status(400).json({ success: false, message: 'Invalid user ID.' });
+      return;
+    }
+
+    const tenantDoc = req.tenant as Record<string, unknown> & { _id: mongoose.Types.ObjectId };
     const tenant = await Tenant.findById(tenantDoc._id);
     if (!tenant) {
       res.status(404).json({ success: false, message: 'Tenant not found.' });
@@ -256,15 +301,25 @@ const removeMember = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const before = tenant.members.length;
-    tenant.members = tenant.members.filter(m => m.user.toString() !== userId);
-
-    if (tenant.members.length === before) {
+    const memberIndex = tenant.members.findIndex(m => m.user.toString() === userId);
+    if (memberIndex === -1) {
       res.status(404).json({ success: false, message: 'Member not found.' });
       return;
     }
 
+    tenant.members.splice(memberIndex, 1);
     await tenant.save();
+
+    // Clear currentTenant on user if it was this tenant, and mark removed in User.tenants
+    await User.findOneAndUpdate(
+      { _id: userId, 'tenants.tenant': tenantDoc._id },
+      { $set: { 'tenants.$.status': 'removed' } }
+    );
+    await User.findOneAndUpdate(
+      { _id: userId, currentTenant: tenantDoc._id },
+      { $set: { currentTenant: null } }
+    );
+
     res.status(200).json({ success: true, message: 'Member removed.' });
   } catch (error) {
     console.error('removeMember error:', error);

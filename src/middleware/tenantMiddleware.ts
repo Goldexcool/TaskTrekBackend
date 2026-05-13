@@ -3,14 +3,11 @@ import Tenant from '../models/Tenant';
 
 /**
  * Resolves the active tenant for the request and attaches it to req.tenant.
- * Also attaches req.tenantMember with the caller's role inside that tenant.
  *
  * Resolution order:
  *   1. x-tenant-id header (MongoDB ObjectId)
  *   2. x-tenant-slug header (URL-safe slug)
  *   3. req.user.currentTenant (last-switched tenant stored on the user)
- *
- * Call this middleware AFTER authenticateToken so req.user is available.
  */
 export const resolveTenant = async (
   req: Request,
@@ -24,18 +21,30 @@ export const resolveTenant = async (
     let tenant: Record<string, unknown> | null = null;
 
     if (tenantId) {
-      tenant = await Tenant.findOne({ _id: tenantId, status: 'active' }).lean() as Record<string, unknown> | null;
+      tenant = await Tenant.findById(tenantId).lean() as Record<string, unknown> | null;
     } else if (tenantSlug) {
-      tenant = await Tenant.findOne({ slug: tenantSlug, status: 'active' }).lean() as Record<string, unknown> | null;
-    } else if (req.user && req.user.currentTenant) {
-      tenant = await Tenant.findOne({ _id: req.user.currentTenant, status: 'active' }).lean() as Record<string, unknown> | null;
+      tenant = await Tenant.findOne({ slug: tenantSlug }).lean() as Record<string, unknown> | null;
+    } else if (req.user?.currentTenant) {
+      tenant = await Tenant.findById(req.user.currentTenant).lean() as Record<string, unknown> | null;
     }
 
     if (!tenant) {
       res.status(400).json({
         success: false,
-        message: 'Tenant context required. Provide x-tenant-id or x-tenant-slug header.'
+        message: 'Tenant context required. Provide x-tenant-id or x-tenant-slug header, or switch to a workspace first.'
       });
+      return;
+    }
+
+    const status = tenant.status as string;
+
+    if (status === 'deleted') {
+      res.status(404).json({ success: false, message: 'Organization not found.' });
+      return;
+    }
+
+    if (status === 'suspended') {
+      res.status(403).json({ success: false, message: 'This organization has been suspended.' });
       return;
     }
 
@@ -43,24 +52,17 @@ export const resolveTenant = async (
     const owner = tenant.owner as { toString(): string };
     const userId = req.user!.id;
 
-    // Verify the caller is an active member of this tenant
-    const member = members.find(
-      m => m.user.toString() === userId.toString() && m.status === 'active'
-    );
+    const isOwner = owner.toString() === userId;
+    const member = members.find(m => m.user.toString() === userId);
+    const isActiveMember = member?.status === 'active';
 
-    // The owner always has access even if not in the members array
-    const isOwner = owner.toString() === userId.toString();
-
-    if (!member && !isOwner) {
-      res.status(403).json({
-        success: false,
-        message: 'You are not a member of this organization.'
-      });
+    if (!isOwner && !isActiveMember) {
+      res.status(403).json({ success: false, message: 'You are not a member of this organization.' });
       return;
     }
 
     req.tenant = tenant;
-    req.tenantId = (tenant._id as { toString(): string }) as unknown as import('mongoose').Types.ObjectId;
+    req.tenantId = (tenant._id as import('mongoose').Types.ObjectId);
     req.tenantMember = {
       role: isOwner ? 'owner' : member!.role,
       status: isOwner ? 'active' : member!.status
@@ -74,32 +76,26 @@ export const resolveTenant = async (
 };
 
 /**
- * Require the caller to be a tenant admin or owner.
+ * requireTenantRole(...roles) — gate a route to specific tenant roles.
  * Must be used after resolveTenant.
+ *
+ * Example: requireTenantRole('owner', 'admin')
  */
-export const requireTenantAdmin = (req: Request, res: Response, next: NextFunction): void => {
-  const role = req.tenantMember && req.tenantMember.role;
-  if (role === 'owner' || role === 'admin') {
-    next();
-    return;
-  }
-  res.status(403).json({
-    success: false,
-    message: 'Tenant admin or owner privileges required.'
-  });
-};
+export const requireTenantRole = (...roles: string[]) =>
+  (req: Request, res: Response, next: NextFunction): void => {
+    const role = req.tenantMember?.role;
+    if (role && roles.includes(role)) {
+      next();
+      return;
+    }
+    res.status(403).json({
+      success: false,
+      message: `This action requires one of the following roles: ${roles.join(', ')}.`
+    });
+  };
 
-/**
- * Require the caller to be the tenant owner.
- * Must be used after resolveTenant.
- */
-export const requireTenantOwner = (req: Request, res: Response, next: NextFunction): void => {
-  if (req.tenantMember && req.tenantMember.role === 'owner') {
-    next();
-    return;
-  }
-  res.status(403).json({
-    success: false,
-    message: 'Tenant owner privileges required.'
-  });
-};
+/** Shorthand: admin or owner */
+export const requireTenantAdmin = requireTenantRole('owner', 'admin');
+
+/** Shorthand: owner only */
+export const requireTenantOwner = requireTenantRole('owner');
